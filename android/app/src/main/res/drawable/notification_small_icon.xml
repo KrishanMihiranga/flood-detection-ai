@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wrapper so flutter_local_notifications can resolve a drawable small icon
+     (the plugin only validates / looks up drawable resources, not mipmap). -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@mipmap/ic_launcher" />
