@@ -22,9 +22,23 @@ class _DashboardProfileTabState extends State<DashboardProfileTab> {
   /// Mock report counts for the current week (demo).
   static const List<int> _weekReports = [8, 14, 9, 11, 7, 10, 6];
   int _highlightIndex = 1; // “peak” day (Tue in reference)
+  String _displayName = DemoCredentials.displayName;
 
   late final Future<bool> _adminFuture =
       AuthSessionRepository.isCurrentUserAdmin();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisplayName();
+  }
+
+  Future<void> _loadDisplayName() async {
+    final name = await AuthSessionRepository.displayName();
+    if (mounted) {
+      setState(() => _displayName = name);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +49,12 @@ class _DashboardProfileTabState extends State<DashboardProfileTab> {
       child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          SliverToBoxAdapter(child: _ProfileHeader(textTheme: textTheme)),
+          SliverToBoxAdapter(
+            child: _ProfileHeader(
+              textTheme: textTheme,
+              displayName: _displayName,
+            ),
+          ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
             sliver: SliverList(
@@ -220,9 +239,13 @@ class _DashboardProfileTabState extends State<DashboardProfileTab> {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.textTheme});
+  const _ProfileHeader({
+    required this.textTheme,
+    required this.displayName,
+  });
 
   final TextTheme textTheme;
+  final String displayName;
 
   @override
   Widget build(BuildContext context) {
@@ -318,9 +341,9 @@ class _ProfileHeader extends StatelessWidget {
                             child: ColoredBox(
                               color: AppColors.surfaceMuted,
                               child: Center(
-                                child: Text(
-                                  _initials(DemoCredentials.displayName),
-                                  style: textTheme.headlineMedium?.copyWith(
+                                  child: Text(
+                                    _initials(displayName),
+                                    style: textTheme.headlineMedium?.copyWith(
                                     fontWeight: FontWeight.w800,
                                     color: AppColors.ctaBackground,
                                   ),
@@ -347,7 +370,7 @@ class _ProfileHeader extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                DemoCredentials.displayName,
+                displayName,
                 textAlign: TextAlign.center,
                 style: textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,

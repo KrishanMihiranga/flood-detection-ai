@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth/auth_session_repository.dart';
 import '../../core/demo/demo_credentials.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/dashboard/section_header.dart';
@@ -16,6 +17,20 @@ class DashboardHomeTab extends StatefulWidget {
 
 class _DashboardHomeTabState extends State<DashboardHomeTab> {
   int _selectedCategory = 0;
+  String _displayName = DemoCredentials.displayName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDisplayName();
+  }
+
+  Future<void> _loadDisplayName() async {
+    final name = await AuthSessionRepository.displayName();
+    if (mounted) {
+      setState(() => _displayName = name);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +61,7 @@ class _DashboardHomeTabState extends State<DashboardHomeTab> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Hello, ${DemoCredentials.displayName}!',
+                            'Hello, $_displayName!',
                             style: textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w800,
                               letterSpacing: -0.8,

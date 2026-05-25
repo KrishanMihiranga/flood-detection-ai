@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'core/notifications/fcm_service.dart';
 import 'core/notifications/local_push_service.dart';
 import 'core/supabase/supabase_bootstrap.dart';
 import 'core/system/app_system_ui.dart';
@@ -14,6 +15,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppSystemUi.initLightChrome();
   await LocalPushService.init();
+  await FcmService.init();
   await SupabaseBootstrap.initializeIfConfigured();
   runApp(const MyApp());
 }

@@ -87,19 +87,19 @@ class CitizenFloodReport {
       };
   static CitizenFloodReport fromJson(Map<String, dynamic> json) {
     return CitizenFloodReport(
-      id: json['id'] as String? ?? '',
+      id: json['report_id'] as String? ?? json['id'] as String? ?? '',
       submittedAt:
-          DateTime.tryParse(json['submittedAt'] as String? ?? '')?.toLocal() ??
+          DateTime.tryParse(json['moderated_at'] as String? ?? json['submittedAt'] as String? ?? '')?.toLocal() ??
               DateTime.now(),
-      reporterPhone: json['reporterPhone'] as String? ?? '',
+      reporterPhone: json['reporter_phone'] as String? ?? json['reporterPhone'] as String? ?? '',
       description: json['description'] as String? ?? '',
-      observedLevel: _parseWaterLevel(json['observedLevel'] as String?),
+      observedLevel: _parseWaterLevel(json['observed_water_level'] as String? ?? json['observedLevel'] as String?),
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
       aiSuggestedRiskLabel:
-          json['aiSuggestedRiskLabel'] as String? ?? 'Unclassified',
+          json['ai_label'] as String? ?? json['aiSuggestedRiskLabel'] as String? ?? 'Unclassified',
       storedPhotoRelativePath:
-          json['storedPhotoRelativePath'] as String?,
+          json['photo_url'] as String? ?? json['storedPhotoRelativePath'] as String?,
       status: _parseStatus(json['status'] as String?),
     );
   }

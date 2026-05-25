@@ -286,7 +286,17 @@ class _AdminReportVerificationScreenState
                   ),
                 ),
                 const SizedBox(height: 10),
-                if (_photoFile != null)
+                if (_r.storedPhotoRelativePath != null &&
+                    (_r.storedPhotoRelativePath!.startsWith('http://') ||
+                        _r.storedPhotoRelativePath!.startsWith('https://')))
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.network(_r.storedPhotoRelativePath!, fit: BoxFit.cover),
+                    ),
+                  )
+                else if (_photoFile != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: AspectRatio(
