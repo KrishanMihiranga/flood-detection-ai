@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/auth_session_repository.dart';
 import '../../core/demo/demo_credentials.dart';
 import '../../core/formatting/email_preview.dart';
+import '../../core/notifications/fcm_service.dart';
+import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/validators/otp_validator.dart';
 import '../../widgets/app_otp_pin_field.dart';
@@ -21,6 +26,7 @@ class OtpVerificationScreen extends StatefulWidget {
     super.key,
     required this.fullEmail,
     this.otpLength = defaultOtpDigits,
+    this.isSignUp = false,
   }) : assert(otpLength == 4 || otpLength == 6);
 
   /// Used only to show a masked address in UI.
@@ -28,6 +34,9 @@ class OtpVerificationScreen extends StatefulWidget {
 
   /// OTP width — choose **4** or **6** digits.
   final int otpLength;
+
+  /// Whether this OTP is for confirming a new signup.
+  final bool isSignUp;
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -37,11 +46,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   final _otp = TextEditingController();
 
   String? _otpError;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _otp.text = DemoCredentials.otpForLength(widget.otpLength);
+    if (!SupabaseConfig.isConfigured) {
+      _otp.text = DemoCredentials.otpForLength(widget.otpLength);
+    }
   }
 
   @override
@@ -63,12 +75,76 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       return;
     }
 
+    if (SupabaseConfig.isConfigured) {
+      setState(() => _loading = true);
+      try {
+        await Supabase.instance.client.auth.verifyOTP(
+          type: widget.isSignUp ? OtpType.signup : OtpType.email,
+          email: widget.fullEmail.trim(),
+          token: _otp.text.trim(),
+        );
+        unawaited(FcmService.registerDeviceToken());
+        if (!mounted) return;
+        DashboardShell.openReplaceAll(context);
+      } catch (e) {
+        debugPrint('Error during OTP verification: $e');
+        if (!mounted) return;
+        setState(() => _otpError = 'Verification failed: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _loading = false);
+        }
+      }
+      return;
+    }
+
     await AuthSessionRepository.persistSignedInEmail(widget.fullEmail.trim());
     if (!mounted) return;
     DashboardShell.openReplaceAll(context);
   }
 
-  void _resend() {
+  Future<void> _resend() async {
+    if (SupabaseConfig.isConfigured) {
+      setState(() => _loading = true);
+      try {
+        if (widget.isSignUp) {
+          await Supabase.instance.client.auth.resend(
+            type: OtpType.signup,
+            email: widget.fullEmail.trim(),
+          );
+        } else {
+          await Supabase.instance.client.auth.signInWithOtp(
+            email: widget.fullEmail.trim(),
+          );
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            content: Text(
+              'A new verification code has been sent to ${EmailPreview.maskEmail(widget.fullEmail)}.',
+              style: const TextStyle(height: 1.35),
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error during OTP resend: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to resend code: $e'),
+            backgroundColor: const Color(0xFFB42318),
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _loading = false);
+        }
+      }
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -147,10 +223,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ],
                 const SizedBox(height: 36),
                 AppPrimaryButton(
-                  label: 'Verify',
+                  label: _loading ? 'Verifying...' : 'Verify',
                   height: 56,
                   borderRadius: 14,
-                  onPressed: _verify,
+                  onPressed: _loading ? null : _verify,
                 ),
                 const SizedBox(height: 16),
                 Center(

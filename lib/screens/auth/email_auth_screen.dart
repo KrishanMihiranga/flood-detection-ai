@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/auth_session_repository.dart';
 import '../../core/demo/demo_credentials.dart';
+import '../../core/supabase/supabase_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/validators/credentials_validator.dart';
 import '../../widgets/app_labeled_text_field.dart';
 import '../../widgets/app_primary_button.dart';
 import '../../widgets/app_round_icon_button.dart';
+import '../admin/admin_pending_reports_screen.dart';
 import '../dashboard/dashboard_shell.dart';
 import 'otp_verification_screen.dart';
 
@@ -19,6 +22,7 @@ class EmailAuthScreen extends StatefulWidget {
 }
 
 class _EmailAuthScreenState extends State<EmailAuthScreen> {
+  final _fullName = TextEditingController();
   final _email = TextEditingController(text: DemoCredentials.email);
   final _password = TextEditingController(text: DemoCredentials.password);
   final _confirmPassword =
@@ -33,9 +37,11 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
   String? _emailError;
   String? _passwordError;
   String? _confirmError;
+  bool _loading = false;
 
   @override
   void dispose() {
+    _fullName.dispose();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
@@ -71,10 +77,13 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     FocusScope.of(context).unfocus();
 
     final emailErr = CredentialsValidator.email(_email.text);
-    final passErr = _isSignUp
+    String? passErr;
+    String? confirmErr;
+
+    passErr = _isSignUp
         ? CredentialsValidator.passwordSignUp(_password.text)
         : CredentialsValidator.passwordSignIn(_password.text);
-    final confirmErr = _isSignUp
+    confirmErr = _isSignUp
         ? CredentialsValidator.confirmPassword(
             password: _password.text,
             confirm: _confirmPassword.text,
@@ -91,6 +100,69 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
     }
 
     final email = _email.text.trim();
+
+    if (SupabaseConfig.isConfigured) {
+      setState(() => _loading = true);
+      try {
+        if (_isSignUp) {
+          await Supabase.instance.client.auth.signUp(
+            email: email,
+            password: _password.text,
+            data: {'display_name': _fullName.text.trim()},
+          );
+          if (!mounted) return;
+          Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => OtpVerificationScreen(
+                fullEmail: email,
+                otpLength: OtpVerificationScreen.defaultOtpDigits,
+                isSignUp: true,
+              ),
+            ),
+          );
+        } else {
+          await Supabase.instance.client.auth.signInWithPassword(
+            email: email,
+            password: _password.text,
+          );
+          if (!mounted) return;
+          DashboardShell.openReplaceAll(context);
+          final role = await AuthSessionRepository.currentRole();
+          if (role.name == 'admin') {
+            if (!mounted) return;
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const AdminPendingReportsScreen(),
+              ),
+            );
+          }
+        }
+      } on AuthException catch (e) {
+        debugPrint('===========AuthException during authentication: ${e}');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: const Color(0xFFB42318),
+          ),
+        );
+      } catch (e) {
+        debugPrint('Unexpected error during authentication: $e');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication failed: $e'),
+            backgroundColor: const Color(0xFFB42318),
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _loading = false);
+        }
+      }
+      return;
+    }
+
     if (_isSignUp) {
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
@@ -156,6 +228,16 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   style: textTheme.bodyLarge?.copyWith(fontSize: 15),
                 ),
                 const SizedBox(height: 36),
+                if (_isSignUp) ...[
+                  AppLabeledTextField(
+                    label: 'Full Name',
+                    controller: _fullName,
+                    hint: 'Enter your Full Name',
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.name],
+                  ),
+                  const SizedBox(height: 22),
+                ],
                 AppLabeledTextField(
                   label: 'Email',
                   controller: _email,
@@ -287,12 +369,14 @@ class _EmailAuthScreenState extends State<EmailAuthScreen> {
                   const SizedBox(height: 6),
                 ],
                 AppPrimaryButton(
-                  label: _isSignUp ? 'Sign up' : 'Login',
+                  label: _loading
+                      ? 'Authenticating...'
+                      : (_isSignUp ? 'Sign up' : 'Login'),
                   height: 56,
                   borderRadius: 14,
                   backgroundColor: AppColors.ctaBackground,
                   foregroundColor: AppColors.ctaForeground,
-                  onPressed: _submit,
+                  onPressed: _loading ? null : _submit,
                 ),
                 const SizedBox(height: 28),
                 _AuthFooter(

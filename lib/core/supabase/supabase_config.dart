@@ -15,6 +15,9 @@ abstract final class SupabaseConfig {
   /// Bulletin inserts admins fan out via Realtime (see `broadcast_supabase_sync.dart`).
   static const broadcastTable = 'broadcast_announcements';
 
+  /// Storage bucket for citizen report photo uploads.
+  static const reportsBucket = 'report_photos';
+
   static bool get isConfigured =>
       url.trim().isNotEmpty && anonKey.trim().isNotEmpty;
 }

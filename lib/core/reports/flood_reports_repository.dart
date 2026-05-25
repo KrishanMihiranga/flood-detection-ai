@@ -1,8 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../supabase/supabase_config.dart';
 import 'approved_reports_map_notifier.dart';
 import 'flood_report_record.dart';
 import 'water_level_choice.dart';
@@ -14,6 +17,19 @@ abstract final class FloodReportsRepository {
   static const _prefsKey = 'flood_guard_citizen_reports_v1';
 
   static Future<List<CitizenFloodReport>> loadAll() async {
+    if (SupabaseConfig.isConfigured) {
+      try {
+        final response = await Supabase.instance.client
+            .from(SupabaseConfig.moderationTable)
+            .select()
+            .order('moderated_at', ascending: false);
+        return (response as List)
+            .map((e) => CitizenFloodReport.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
+        debugPrint('Failed to load reports from Supabase: $e');
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
     if (raw == null || raw.isEmpty) return [];
@@ -109,7 +125,7 @@ abstract final class FloodReportsRepository {
     await prefs.setString(_prefsKey, CitizenFloodReport.encodeList(rows));
   }
 
-  /// Persists JPEG bytes under application documents (`report_photos/<id>.jpg`).
+  /// Persists JPEG bytes under application documents or uploads to Supabase.
   static Future<CitizenFloodReport> submitReport({
     required String reporterPhone,
     required String description,
@@ -126,6 +142,8 @@ abstract final class FloodReportsRepository {
     );
 
     String? relative;
+    String? remoteUrl;
+
     if (photoFileMaybe != null && await photoFileMaybe.exists()) {
       final docs = await getApplicationDocumentsDirectory();
       final folder = Directory('${docs.path}/report_photos');
@@ -133,6 +151,42 @@ abstract final class FloodReportsRepository {
       final dest = File('${folder.path}/$id.jpg');
       await photoFileMaybe.copy(dest.path);
       relative = 'report_photos/$id.jpg';
+    }
+
+    if (SupabaseConfig.isConfigured) {
+      if (photoFileMaybe != null && await photoFileMaybe.exists()) {
+        try {
+          final path = '$id.jpg';
+          await Supabase.instance.client.storage
+              .from(SupabaseConfig.reportsBucket)
+              .upload(path, photoFileMaybe);
+          remoteUrl = Supabase.instance.client.storage
+              .from(SupabaseConfig.reportsBucket)
+              .getPublicUrl(path);
+        } catch (e) {
+          debugPrint('Failed to upload photo to Supabase storage: $e');
+        }
+      }
+
+      try {
+        final reporterId = Supabase.instance.client.auth.currentUser?.id;
+        await Supabase.instance.client.from(SupabaseConfig.moderationTable).insert({
+          'report_id': id,
+          'status': 'pending',
+          'latitude': latitude,
+          'longitude': longitude,
+          'description': description.trim(),
+          'reporter_phone': reporterPhone.trim(),
+          'ai_label': aiLabel,
+          'observed_water_level': observedLevel.name,
+          'moderated_at': DateTime.now().toUtc().toIso8601String(),
+          'broadcast_to_map': false,
+          'photo_url': remoteUrl,
+          'reporter_id': reporterId,
+        });
+      } catch (e) {
+        debugPrint('Failed to insert report into Supabase: $e');
+      }
     }
 
     final report = CitizenFloodReport(
@@ -144,13 +198,15 @@ abstract final class FloodReportsRepository {
       latitude: latitude,
       longitude: longitude,
       aiSuggestedRiskLabel: aiLabel,
-      storedPhotoRelativePath: relative,
+      storedPhotoRelativePath: remoteUrl ?? relative,
       status: FloodReportWorkflowStatus.pending,
     );
 
-    final all = await loadAll();
-    all.add(report);
-    await saveReports(all);
+    if (!SupabaseConfig.isConfigured) {
+      final all = await loadAll();
+      all.add(report);
+      await saveReports(all);
+    }
     return report;
   }
 
@@ -170,6 +226,21 @@ abstract final class FloodReportsRepository {
     String id,
     FloodReportWorkflowStatus outcome,
   ) async {
+    if (SupabaseConfig.isConfigured) {
+      try {
+        await Supabase.instance.client
+            .from(SupabaseConfig.moderationTable)
+            .update({
+              'status': outcome.name,
+              'broadcast_to_map': outcome == FloodReportWorkflowStatus.approved,
+            })
+            .eq('report_id', id);
+      } catch (e) {
+        debugPrint('Failed to update status on Supabase: $e');
+        return false;
+      }
+    }
+
     final rows = await loadAll();
     final ix = rows.indexWhere((e) => e.id == id);
     if (ix < 0) return false;
